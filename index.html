@@ -117,6 +117,7 @@
     <main>
       <div class="empty" id="emptyState">พิมพ์เลข PL จากเอกสารในมือ<br>แล้วกด → เพื่อดึงรายละเอียดจาก Google ชีต</div>
       <div class="not-found" id="notFound">ไม่พบเลขนี้ใน PUNCH_LIST<br>ลองตรวจสอบเลขอีกครั้ง</div>
+      <div class="not-found" id="searchError" style="color:var(--fix);"></div>
 
       <div class="card" id="card">
         <div class="pid mono" id="cPid">—</div>
@@ -193,6 +194,7 @@ const searchInput = document.getElementById('searchInput');
 const searchBtn = document.getElementById('searchBtn');
 const emptyState = document.getElementById('emptyState');
 const notFound = document.getElementById('notFound');
+const searchError = document.getElementById('searchError');
 const card = document.getElementById('card');
 const cPid = document.getElementById('cPid');
 const cZone = document.getElementById('cZone');
@@ -208,11 +210,14 @@ async function doSearch(){
   const id = searchInput.value.trim().toUpperCase();
   if(!id) return;
   searchBtn.disabled = true;
+  searchError.classList.remove('show');
+  searchError.textContent = '';
   try{
     const res = await fetch(APPS_SCRIPT_URL + '?punchId=' + encodeURIComponent(id));
+    if(!res.ok){
+      throw new Error('เซิร์ฟเวอร์ตอบกลับผิดพลาด (HTTP ' + res.status + ')');
+    }
     const data = await res.json();
-    resultNote.className = 'result-note';
-    resultNote.textContent = '';
     if(!data.found){
       emptyState.style.display = 'none';
       card.classList.remove('show');
@@ -228,8 +233,11 @@ async function doSearch(){
     resetForm();
     card.classList.add('show');
   }catch(err){
-    resultNote.className = 'result-note error show';
-    resultNote.textContent = 'เชื่อมต่อไม่สำเร็จ: ' + err.message;
+    emptyState.style.display = 'none';
+    notFound.classList.remove('show');
+    card.classList.remove('show');
+    searchError.textContent = '⚠️ เชื่อมต่อไม่สำเร็จ: ' + err.message + '\n\nถ้าเห็นคำว่า "Failed to fetch" หรือ "CORS" ให้ส่งข้อความนี้กลับมาบอก Claude';
+    searchError.classList.add('show');
   }finally{
     searchBtn.disabled = false;
   }
