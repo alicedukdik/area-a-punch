@@ -226,7 +226,11 @@ async function doSearch(){
   searchError.classList.remove('show');
   searchError.textContent = '';
   try{
-    const data = await jsonpRequest(APPS_SCRIPT_URL + '?punchId=' + encodeURIComponent(id));
+    const res = await fetch(APPS_SCRIPT_URL + '?punchId=' + encodeURIComponent(id));
+    if(!res.ok){
+      throw new Error('เซิร์ฟเวอร์ตอบกลับผิดพลาด (HTTP ' + res.status + ')');
+    }
+    const data = await res.json();
     if(!data.found){
       emptyState.style.display = 'none';
       card.classList.remove('show');
