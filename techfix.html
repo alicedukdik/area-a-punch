@@ -22,8 +22,8 @@
   h1{font-size:19px;font-weight:600;margin:2px 0 16px;}
   .auth-status{font-size:11px;color:var(--muted);margin:-10px 0 16px;}
 
-  .gate{flex:1;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:14px;padding:40px 10px;text-align:center;}
-  .gate.hide{display:none;}
+  .gate{flex:1;display:none;align-items:center;justify-content:center;flex-direction:column;gap:14px;padding:40px 10px;text-align:center;}
+  .gate.show{display:flex;}
   .gate p{color:var(--muted);font-size:13.5px;line-height:1.6;}
   .gate button{background:var(--amber);color:#2A1B05;border:none;border-radius:10px;padding:12px 22px;font-size:14px;font-weight:600;cursor:pointer;}
 
@@ -119,6 +119,7 @@ async function initLiff(){
   punchId = getQueryParam('punchId');
   if(!punchId){
     authStatus.style.display = 'none';
+    noPunchIdNote.textContent = 'ไม่พบเลข Punch ในลิงก์ — URL จริงที่เปิดคือ: ' + window.location.href;
     noPunchIdNote.style.display = 'block';
     return;
   }
@@ -126,13 +127,13 @@ async function initLiff(){
     await liff.init({ liffId: LIFF_ID });
     if(!liff.isLoggedIn()){
       authStatus.textContent = 'ยังไม่ได้เข้าสู่ระบบ';
-      gate.style.display = 'flex';
+      gate.classList.add('show');
       return;
     }
     const profile = await liff.getProfile();
     displayName = profile.displayName;
     authStatus.textContent = 'เข้าสู่ระบบแล้ว: ' + profile.displayName;
-    gate.style.display = 'none';
+    gate.classList.remove('show');
     loadPunch();
   }catch(err){
     authStatus.textContent = 'เชื่อมต่อ LINE ไม่สำเร็จ: ' + err.message;
