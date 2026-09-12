@@ -356,7 +356,7 @@ function iframePost(url, payload){
 ctaBtn.addEventListener('click', async ()=>{
   if(!pendingStatus) return;
   ctaBtn.classList.add('loading');
-  ctaBtn.textContent = 'กำลังบันทึก...';
+  ctaBtn.textContent = 'กำลังบันทึก... (รอสักครู่ ถ้ามีรูปแนบจะใช้เวลานานขึ้น)';
   const targetId = currentId;
   const payload = {
     punchId: targetId,
@@ -367,9 +367,14 @@ ctaBtn.addEventListener('click', async ()=>{
   };
   try{
     await iframePost(APPS_SCRIPT_URL, payload);
-    // รอเซิร์ฟเวอร์เขียนชีต + ยิงไลน์ให้เสร็จก่อนค่อยเช็คผล
-    await new Promise(r => setTimeout(r, 2000));
-    const check = await jsonpRequest(APPS_SCRIPT_URL + '?punchId=' + encodeURIComponent(targetId));
+    // เช็คผลซ้ำหลายรอบ เพราะ doPost อาจใช้เวลานานถ้ามีรูปแนบเยอะ (ไม่ใช้เวลารอคงที่ครั้งเดียว)
+    let check = {found:false};
+    const waits = [2000, 3000, 4000, 4000]; // รวมรอสูงสุด ~13 วิ
+    for(const w of waits){
+      await new Promise(r => setTimeout(r, w));
+      check = await jsonpRequest(APPS_SCRIPT_URL + '?punchId=' + encodeURIComponent(targetId));
+      if(check.found && check.status === pendingStatus) break;
+    }
 
     if(check.found && check.status === pendingStatus){
       if(pendingStatus === 'OK'){
