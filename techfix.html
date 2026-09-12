@@ -195,15 +195,55 @@ function renderPhotoGrid(){
   ctaBtn.disabled = photos.length === 0;
   ctaBtn.textContent = photos.length === 0 ? 'เลือกอย่างน้อย 1 รูปก่อน' : 'บันทึก + ส่งรูปเข้ากลุ่ม →';
 }
-document.getElementById('photoAdd').addEventListener('click', ()=> photoInput.click());
-photoInput.addEventListener('change', ()=>{
-  const files = Array.from(photoInput.files).slice(0, MAX_PHOTOS - photos.length);
-  let loaded = 0;
-  files.forEach(file=>{
+function resizeImage(file, maxDim, quality){
+  maxDim = maxDim || 1600;
+  quality = quality || 0.8;
+  return new Promise((resolve, reject)=>{
     const reader = new FileReader();
-    reader.onload = ev=>{ photos.push(ev.target.result); loaded++; if(loaded===files.length) renderPhotoGrid(); };
+    reader.onload = (e)=>{
+      const img = new Image();
+      img.onload = ()=>{
+        let w = img.width, h = img.height;
+        if(w > h && w > maxDim){ h = Math.round(h * maxDim / w); w = maxDim; }
+        else if(h > maxDim){ w = Math.round(w * maxDim / h); h = maxDim; }
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.onerror = ()=> reject(new Error('อ่านไฟล์รูปไม่สำเร็จ'));
+      img.src = e.target.result;
+    };
+    reader.onerror = ()=> reject(new Error('อ่านไฟล์ไม่สำเร็จ'));
     reader.readAsDataURL(file);
   });
+}
+
+function readFileAsDataURL(file){
+  return new Promise((resolve, reject)=>{
+    const reader = new FileReader();
+    reader.onload = e => resolve(e.target.result);
+    reader.onerror = () => reject(new Error('อ่านไฟล์ไม่สำเร็จ'));
+    reader.readAsDataURL(file);
+  });
+}
+
+document.getElementById('photoAdd').addEventListener('click', ()=> photoInput.click());
+photoInput.addEventListener('change', async ()=>{
+  const files = Array.from(photoInput.files).slice(0, MAX_PHOTOS - photos.length);
+  for(const file of files){
+    try{
+      const resized = await resizeImage(file);
+      photos.push(resized);
+    }catch(e){
+      // ย่อไม่สำเร็จ (ไม่ว่าเหตุผลอะไร) ใช้ไฟล์ต้นฉบับแทนเงียบๆ ไม่ให้ช่างเห็น error
+      try{
+        const original = await readFileAsDataURL(file);
+        photos.push(original);
+      }catch(e2){ /* ไฟล์นี้เปิดไม่ได้จริงๆ ข้ามไปเงียบๆ */ }
+    }
+  }
+  renderPhotoGrid();
   photoInput.value = '';
 });
 renderPhotoGrid();
@@ -246,7 +286,7 @@ function iframePost(url, payload){
 const resultNote = document.getElementById('resultNote');
 ctaBtn.addEventListener('click', async ()=>{
   ctaBtn.classList.add('loading');
-  ctaBtn.textContent = 'กำลังบันทึก...';
+  ctaBtn.textContent = 'กำลังบันทึก... กรุณารอสักครู่';
   const payload = {
     type: 'techFix',
     punchId: punchId,
@@ -256,16 +296,28 @@ ctaBtn.addEventListener('click', async ()=>{
   };
   try{
     await iframePost(APPS_SCRIPT_URL, payload);
-    await new Promise(r => setTimeout(r, 2000));
-    const check = await jsonpRequest(APPS_SCRIPT_URL + '?punchId=' + encodeURIComponent(punchId));
-    resultNote.className = 'result-note ok show';
-    resultNote.textContent = '✓ บันทึกการแก้ไข ' + punchId + ' เรียบร้อยแล้ว (แนบ ' + photos.length + ' รูป) — ปิดหน้านี้ได้เลย';
-    ctaBtn.style.display = 'none';
+    let check = {found:false};
+    const waits = [2000, 3000, 4000, 5000, 6000];
+    for(const w of waits){
+      await new Promise(r => setTimeout(r, w));
+      check = await jsonpRequest(APPS_SCRIPT_URL + '?punchId=' + encodeURIComponent(punchId));
+      if(check.found && check.fixResponse === 'Fixed_Confirmed') break;
+    }
+    if(check.found && check.fixResponse === 'Fixed_Confirmed'){
+      resultNote.className = 'result-note ok show';
+      resultNote.textContent = '✓ บันทึกการแก้ไข ' + punchId + ' เรียบร้อยแล้ว (แนบ ' + photos.length + ' รูป) — ปิดหน้านี้ได้เลย';
+      ctaBtn.style.display = 'none';
+    } else {
+      resultNote.className = 'result-note error show';
+      resultNote.textContent = '⚠️ ยังไม่แน่ใจว่าบันทึกสำเร็จ กรุณากดปุ่มบันทึกอีกครั้ง';
+      ctaBtn.classList.remove('loading');
+      ctaBtn.textContent = 'บันทึก + ส่งรูปเข้ากลุ่ม →';
+    }
   }catch(err){
     resultNote.className = 'result-note error show';
-    resultNote.textContent = 'เชื่อมต่อไม่สำเร็จ: ' + err.message;
+    resultNote.textContent = '⚠️ บันทึกไม่สำเร็จ อินเทอร์เน็ตอาจหลุดชั่วขณะ กรุณากดปุ่มบันทึกอีกครั้ง';
     ctaBtn.classList.remove('loading');
-    renderPhotoGrid();
+    ctaBtn.textContent = 'บันทึก + ส่งรูปเข้ากลุ่ม →';
   }
 });
 
