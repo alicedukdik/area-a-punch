@@ -116,15 +116,15 @@ function getQueryParam(name){
 }
 
 async function initLiff(){
-  punchId = getQueryParam('punchId');
-  if(!punchId){
-    authStatus.style.display = 'none';
-    noPunchIdNote.textContent = 'ไม่พบเลข Punch ในลิงก์ — URL จริงที่เปิดคือ: ' + window.location.href;
-    noPunchIdNote.style.display = 'block';
-    return;
-  }
   try{
     await liff.init({ liffId: LIFF_ID });
+    punchId = getQueryParam('punchId');
+    if(!punchId){
+      authStatus.style.display = 'none';
+      noPunchIdNote.textContent = 'ไม่พบเลข Punch ในลิงก์ — URL จริงที่เปิดคือ: ' + window.location.href;
+      noPunchIdNote.style.display = 'block';
+      return;
+    }
     if(!liff.isLoggedIn()){
       authStatus.textContent = 'ยังไม่ได้เข้าสู่ระบบ';
       gate.classList.add('show');
