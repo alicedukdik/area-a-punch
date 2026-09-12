@@ -313,36 +313,81 @@ photoInput.addEventListener('change', ()=>{
 });
 renderPhotoGrid();
 
-// ---------- บันทึกจริง ----------
+// ---------- ส่งข้อมูลแบบไม่ติด CORS (hidden iframe + form) ----------
+function iframePost(url, payload){
+  return new Promise((resolve)=>{
+    const frameName = 'post_frame_' + Date.now();
+    const iframe = document.createElement('iframe');
+    iframe.name = frameName;
+    iframe.style.display = 'none';
+    document.body.appendChild(iframe);
+
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = url;
+    form.target = frameName;
+    form.style.display = 'none';
+
+    const input = document.createElement('input');
+    input.type = 'hidden';
+    input.name = 'payload';
+    input.value = JSON.stringify(payload);
+    form.appendChild(input);
+    document.body.appendChild(form);
+
+    let done = false;
+    iframe.addEventListener('load', ()=>{
+      if(done) return;
+      done = true;
+      setTimeout(()=>{ form.remove(); iframe.remove(); resolve(); }, 300);
+    });
+    // เผื่อ iframe ไม่ยิง load event (บาง webview) ให้ resolve เองหลัง 4 วิ
+    setTimeout(()=>{
+      if(done) return;
+      done = true;
+      form.remove(); iframe.remove(); resolve();
+    }, 4000);
+
+    form.submit();
+  });
+}
+
+// ---------- บันทึกจริง (ส่งแบบ iframe แล้วค้นหาซ้ำเพื่อยืนยันผล) ----------
 ctaBtn.addEventListener('click', async ()=>{
   if(!pendingStatus) return;
   ctaBtn.classList.add('loading');
   ctaBtn.textContent = 'กำลังบันทึก...';
+  const targetId = currentId;
+  const payload = {
+    punchId: targetId,
+    status: pendingStatus,
+    remark: remarkInput.value.trim(),
+    lineUserId: lineUserId,
+    photos: photos.map(p => p.split(',')[1])
+  };
   try{
-    const payload = {
-      punchId: currentId,
-      status: pendingStatus,
-      remark: remarkInput.value.trim(),
-      lineUserId: lineUserId,
-      photos: photos.map(p => p.split(',')[1]) // ตัด "data:image/jpeg;base64," ออก เหลือแค่ base64 ล้วน
-    };
-    const res = await fetch(APPS_SCRIPT_URL, {
-      method: 'POST',
-      body: JSON.stringify(payload)
-    });
-    const data = await res.json();
-    if(!data.success){
-      resultNote.className = 'result-note error show';
-      resultNote.textContent = 'บันทึกไม่สำเร็จ: ' + (data.message || 'ไม่ทราบสาเหตุ');
-    } else if(pendingStatus === 'OK'){
-      resultNote.className = 'result-note sheet-only show';
-      resultNote.textContent = '✓ บันทึกลง Google ชีตแล้ว — ' + currentId + ' = เรียบร้อย';
+    await iframePost(APPS_SCRIPT_URL, payload);
+    // รอเซิร์ฟเวอร์เขียนชีต + ยิงไลน์ให้เสร็จก่อนค่อยเช็คผล
+    await new Promise(r => setTimeout(r, 2000));
+    const check = await jsonpRequest(APPS_SCRIPT_URL + '?punchId=' + encodeURIComponent(targetId));
+
+    if(check.found && check.status === pendingStatus){
+      if(pendingStatus === 'OK'){
+        resultNote.className = 'result-note sheet-only show';
+        resultNote.textContent = '✓ ยืนยันแล้ว — บันทึกลง Google ชีต: ' + targetId + ' = เรียบร้อย';
+      } else {
+        resultNote.className = 'result-note sheet-line show';
+        resultNote.textContent = '✓ ยืนยันแล้ว — บันทึกลง Google ชีตและส่งแจ้งเตือนไปที่กลุ่มไลน์แล้ว (เช็คในกลุ่มเพื่อความชัวร์)';
+      }
+      ctaBtn.className = 'cta';
+      ctaBtn.textContent = 'บันทึกแล้ว';
     } else {
-      resultNote.className = 'result-note sheet-line show';
-      resultNote.textContent = '✓ บันทึก + แจ้งเตือนกลุ่มไลน์แล้ว' + (data.lineSent ? '' : ' (แต่ส่งไลน์ไม่สำเร็จ เช็คชีตคอลัมน์ I)');
+      resultNote.className = 'result-note error show';
+      resultNote.textContent = 'ตรวจสอบแล้วสถานะในชีตยังไม่เปลี่ยน อาจบันทึกไม่สำเร็จ กรุณาลองกดใหม่อีกครั้ง';
+      ctaBtn.classList.remove('loading');
+      ctaBtn.className = 'cta ready-' + (pendingStatus==='OK'?'ok':'fix');
+      ctaBtn.textContent = pendingStatus==='OK' ? 'บันทึกลง Google ชีต' : 'บันทึก + แจ้งเตือนกลุ่มไลน์ →';
     }
-    ctaBtn.className = 'cta';
-    ctaBtn.textContent = 'บันทึกแล้ว';
   }catch(err){
     resultNote.className = 'result-note error show';
     resultNote.textContent = 'เชื่อมต่อไม่สำเร็จ: ' + err.message;
