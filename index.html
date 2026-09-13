@@ -222,6 +222,23 @@ function jsonpRequest(url){
   });
 }
 
+async function jsonpRequestWithRetry(url, attempts){
+  attempts = attempts || 3;
+  let lastErr;
+  for(let i = 0; i < attempts; i++){
+    try{
+      return await jsonpRequest(url);
+    }catch(err){
+      lastErr = err;
+      if(i < attempts - 1){
+        searchBtn.textContent = '⏳';
+        await new Promise(r => setTimeout(r, 1000));
+      }
+    }
+  }
+  throw lastErr;
+}
+
 async function doSearch(){
   const id = searchInput.value.trim().toUpperCase();
   if(!id) return;
@@ -229,7 +246,7 @@ async function doSearch(){
   searchError.classList.remove('show');
   searchError.textContent = '';
   try{
-    const data = await jsonpRequest(APPS_SCRIPT_URL + '?punchId=' + encodeURIComponent(id));
+    const data = await jsonpRequestWithRetry(APPS_SCRIPT_URL + '?punchId=' + encodeURIComponent(id), 3);
     if(!data.found){
       emptyState.style.display = 'none';
       card.classList.remove('show');
@@ -248,10 +265,11 @@ async function doSearch(){
     emptyState.style.display = 'none';
     notFound.classList.remove('show');
     card.classList.remove('show');
-    searchError.textContent = '⚠️ เชื่อมต่อไม่สำเร็จ: ' + err.message + '\n\nถ้าเห็นคำว่า "Failed to fetch" หรือ "CORS" ให้ส่งข้อความนี้กลับมาบอก Claude';
+    searchError.textContent = '⚠️ เชื่อมต่อไม่สำเร็จหลังลองแล้ว 3 ครั้ง: ' + err.message + '\n\nลองกดค้นหาอีกครั้ง หรือส่งข้อความนี้กลับมาบอก Claude';
     searchError.classList.add('show');
   }finally{
     searchBtn.disabled = false;
+    searchBtn.textContent = '→';
   }
 }
 searchBtn.addEventListener('click', doSearch);
