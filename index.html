@@ -210,7 +210,7 @@ function jsonpRequest(url){
   return new Promise((resolve, reject)=>{
     const cbName = 'jsonp_cb_' + Date.now() + '_' + Math.floor(Math.random()*100000);
     const script = document.createElement('script');
-    const timer = setTimeout(()=>{ cleanup(); reject(new Error('หมดเวลาเชื่อมต่อ (15 วินาที) ลองใหม่อีกครั้ง')); }, 15000);
+    const timer = setTimeout(()=>{ cleanup(); reject(new Error('หมดเวลาเชื่อมต่อ (25 วินาที) ลองใหม่อีกครั้ง')); }, 25000);
     function cleanup(){ delete window[cbName]; script.remove(); clearTimeout(timer); }
     window[cbName] = (data)=>{ cleanup(); resolve(data); };
     script.onerror = ()=>{ cleanup(); reject(new Error('โหลดข้อมูลจากเซิร์ฟเวอร์ไม่สำเร็จ')); };
@@ -300,15 +300,45 @@ function renderPhotoGrid(){
   photoCount.classList.toggle('full', photos.length >= MAX_PHOTOS);
   document.getElementById('photoAdd').style.display = photos.length >= MAX_PHOTOS ? 'none' : 'flex';
 }
-document.getElementById('photoAdd').addEventListener('click', ()=> photoInput.click());
-photoInput.addEventListener('change', ()=>{
-  const files = Array.from(photoInput.files).slice(0, MAX_PHOTOS - photos.length);
-  let loaded = 0;
-  files.forEach(file=>{
+function resizeImage(file, maxDim, quality){
+  maxDim = maxDim || 1600;
+  quality = quality || 0.8;
+  return new Promise((resolve, reject)=>{
     const reader = new FileReader();
-    reader.onload = ev=>{ photos.push(ev.target.result); loaded++; if(loaded===files.length) renderPhotoGrid(); };
+    reader.onload = (e)=>{
+      const img = new Image();
+      img.onload = ()=>{
+        let w = img.width, h = img.height;
+        if(w > h && w > maxDim){ h = Math.round(h * maxDim / w); w = maxDim; }
+        else if(h > maxDim){ w = Math.round(w * maxDim / h); h = maxDim; }
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.onerror = ()=> reject(new Error('อ่านไฟล์รูปไม่สำเร็จ'));
+      img.src = e.target.result;
+    };
+    reader.onerror = ()=> reject(new Error('อ่านไฟล์ไม่สำเร็จ'));
     reader.readAsDataURL(file);
   });
+}
+
+document.getElementById('photoAdd').addEventListener('click', ()=> photoInput.click());
+photoInput.addEventListener('change', async ()=>{
+  const files = Array.from(photoInput.files).slice(0, MAX_PHOTOS - photos.length);
+  let failCount = 0;
+  for(const file of files){
+    try{
+      const resized = await resizeImage(file);
+      photos.push(resized);
+    }catch(e){ failCount++; }
+  }
+  renderPhotoGrid();
+  if(failCount > 0){
+    resultNote.className = 'result-note error show';
+    resultNote.textContent = '⚠️ มี ' + failCount + ' รูปที่ประมวลผลไม่สำเร็จ (อาจเป็นไฟล์ฟอร์แมต HEIC) ข้ามไปแล้ว ลองถ่ายใหม่หรือเลือกรูปอื่นแทน';
+  }
   photoInput.value = '';
 });
 renderPhotoGrid();
@@ -365,11 +395,13 @@ ctaBtn.addEventListener('click', async ()=>{
     lineUserId: lineUserId,
     photos: photos.map(p => p.split(',')[1])
   };
+  const payloadKB = Math.round(JSON.stringify(payload).length / 1024);
+  ctaBtn.textContent = 'กำลังบันทึก... (ขนาดข้อมูล ~' + payloadKB + ' KB)';
   try{
     await iframePost(APPS_SCRIPT_URL, payload);
     // เช็คผลซ้ำหลายรอบ เพราะ doPost อาจใช้เวลานานถ้ามีรูปแนบเยอะ (ไม่ใช้เวลารอคงที่ครั้งเดียว)
     let check = {found:false};
-    const waits = [2000, 3000, 4000, 4000]; // รวมรอสูงสุด ~13 วิ
+    const waits = [3000, 4000, 5000, 6000, 7000, 7000]; // รวมรอสูงสุด ~32 วิ
     for(const w of waits){
       await new Promise(r => setTimeout(r, w));
       check = await jsonpRequest(APPS_SCRIPT_URL + '?punchId=' + encodeURIComponent(targetId));
@@ -388,7 +420,7 @@ ctaBtn.addEventListener('click', async ()=>{
       ctaBtn.textContent = 'บันทึกแล้ว';
     } else {
       resultNote.className = 'result-note error show';
-      resultNote.textContent = 'ตรวจสอบแล้วสถานะในชีตยังไม่เปลี่ยน อาจบันทึกไม่สำเร็จ กรุณาลองกดใหม่อีกครั้ง';
+      resultNote.textContent = 'ตรวจสอบแล้วสถานะในชีตยังไม่เปลี่ยน อาจบันทึกไม่สำเร็จ (ขนาดข้อมูลที่ส่ง ~' + payloadKB + ' KB, แนบ ' + photos.length + ' รูป) กรุณาลองกดใหม่อีกครั้ง';
       ctaBtn.classList.remove('loading');
       ctaBtn.className = 'cta ready-' + (pendingStatus==='OK'?'ok':'fix');
       ctaBtn.textContent = pendingStatus==='OK' ? 'บันทึกลง Google ชีต' : 'บันทึก + แจ้งเตือนกลุ่มไลน์ →';
