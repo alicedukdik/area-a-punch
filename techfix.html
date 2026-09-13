@@ -213,8 +213,8 @@ function renderPhotoGrid(){
   ctaBtn.textContent = photos.length === 0 ? 'เลือกอย่างน้อย 1 รูปก่อน' : 'บันทึก + ส่งรูปเข้ากลุ่ม →';
 }
 function resizeImage(file, maxDim, quality){
-  maxDim = maxDim || 1600;
-  quality = quality || 0.8;
+  maxDim = maxDim || 1280;
+  quality = quality || 0.72;
   return new Promise((resolve, reject)=>{
     const reader = new FileReader();
     reader.onload = (e)=>{
@@ -248,18 +248,22 @@ function readFileAsDataURL(file){
 document.getElementById('photoAdd').addEventListener('click', ()=> photoInput.click());
 photoInput.addEventListener('change', async ()=>{
   const files = Array.from(photoInput.files).slice(0, MAX_PHOTOS - photos.length);
-  for(const file of files){
+  const addTile = document.getElementById('photoAdd');
+  const addTileOriginal = addTile.innerHTML;
+  for(let i=0; i<files.length; i++){
+    addTile.innerHTML = '<div class="icon">⏳</div><div>กำลังโหลด ' + (i+1) + '/' + files.length + '</div>';
     try{
-      const resized = await resizeImage(file);
+      const resized = await resizeImage(files[i]);
       photos.push(resized);
     }catch(e){
       // ย่อไม่สำเร็จ (ไม่ว่าเหตุผลอะไร) ใช้ไฟล์ต้นฉบับแทนเงียบๆ ไม่ให้ช่างเห็น error
       try{
-        const original = await readFileAsDataURL(file);
+        const original = await readFileAsDataURL(files[i]);
         photos.push(original);
       }catch(e2){ /* ไฟล์นี้เปิดไม่ได้จริงๆ ข้ามไปเงียบๆ */ }
     }
   }
+  addTile.innerHTML = addTileOriginal;
   renderPhotoGrid();
   photoInput.value = '';
 });
@@ -314,7 +318,7 @@ ctaBtn.addEventListener('click', async ()=>{
   try{
     await iframePost(APPS_SCRIPT_URL, payload);
     let check = {found:false};
-    const waits = [3000, 4000, 5000, 6000, 7000, 7000];
+    const waits = [3000, 4000, 5000, 6000, 7000, 8000, 8000, 8000];
     for(const w of waits){
       await new Promise(r => setTimeout(r, w));
       check = await jsonpRequest(APPS_SCRIPT_URL + '?punchId=' + encodeURIComponent(punchId));
